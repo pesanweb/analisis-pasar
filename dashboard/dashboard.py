@@ -35,7 +35,7 @@ def load_data():
     reviews        = pd.read_csv(folder + 'order_reviews_dataset.csv')
     products       = pd.read_csv(folder + 'products_dataset.csv')
     sellers        = pd.read_csv(folder + 'sellers_dataset.csv')
-    geolocation    = pd.read_csv(folder + 'geolocation_dataset.csv')
+    geolocation    = pd.read_csv(folder + 'geolocation_trimmed.csv')
     category_trans = pd.read_csv(folder + 'product_category_name_translation.csv')
 
     # Cleaning sederhana
