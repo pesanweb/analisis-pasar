@@ -27,7 +27,7 @@ st.markdown("---")
 # Load Data
 @st.cache_data
 def load_data():
-    folder = 'E-Commerce Public Dataset/'
+    folder = 'data/'
     customers      = pd.read_csv(folder + 'customers_dataset.csv')
     orders         = pd.read_csv(folder + 'orders_dataset.csv')
     items          = pd.read_csv(folder + 'order_items_dataset.csv')
