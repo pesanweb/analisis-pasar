@@ -31,6 +31,8 @@ Jika belum ada requirements.txt, install manual:
 pip install pandas numpy matplotlib seaborn streamlit scipy
 ```
 
+> **Catatan:** Untuk deployment ke Streamlit Cloud, pastikan hanya file `requirements.txt` yang digunakan sebagai referensi dependensi. File `Pipfile` tidak diperlukan dan akan dihapus dari repositori untuk menghindari konflik resolusi dependensi.
+
 ## 🚀 Cara Menjalankan
 
 ### Local Deployment
