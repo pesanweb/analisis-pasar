@@ -28,7 +28,7 @@ pip install -r requirements.txt
 
 Jika belum ada requirements.txt, install manual:
 ```bash
-pip install pandas numpy matplotlib seaborn streamlit scipy
+pip install pandas numpy matplotlib seaborn streamlit scipy babel
 ```
 
 > **Catatan:** Untuk deployment ke Streamlit Cloud, pastikan hanya file `requirements.txt` yang digunakan sebagai referensi dependensi. File `Pipfile` tidak diperlukan dan akan dihapus dari repositori untuk menghindari konflik resolusi dependensi.
