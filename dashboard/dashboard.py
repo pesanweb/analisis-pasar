@@ -1,3 +1,4 @@
+import os
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -27,7 +28,8 @@ st.markdown("---")
 # Load Data
 @st.cache_data
 def load_data():
-    folder = 'data/'
+    BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    folder = os.path.join(BASE_DIR, 'data') + '/'
     customers      = pd.read_csv(folder + 'customers_dataset.csv')
     orders         = pd.read_csv(folder + 'orders_dataset.csv')
     items          = pd.read_csv(folder + 'order_items_dataset.csv')
@@ -58,7 +60,7 @@ customers, orders, items, payments, reviews, products, geolocation, category_tra
 st.sidebar.header("Navigasi")
 menu = st.sidebar.radio(
     "Pilih Halaman:",
-    ["🏠 Home", "📦 Produk Laris", "📍 Kota Sumber Cuan", "📅 Tren Penjualan", "🚚 Pengiriman & Review", "👥 RFM Analysis", "🗺️ Geospatial", "🎯 Clustering", "💳 Pembayaran Online vs Offline", "📆 Konversi Hari Libur"]
+    ["🏠 Home", "📦 Produk Laris", "📍 Kota Sumber Cuan", "📅 Tren Penjualan", "🚚 Pengiriman & Review", "👥 RFM Analysis", "🗺️ Geospatial", "🎯 Clustering", "💳 Pembayaran Online vs Offline", "📆 Konversi Hari Libur", "🔍 Filter Interaktif"]
 )
 
 # Helper metrics
@@ -722,6 +724,316 @@ elif menu == "📆 Konversi Hari Libur":
         | 3 | Sediakan customer support extra saat holiday | Medium | Coverage 24/7 |
         | 4 | Analisis faktor yang menyebabkan conversion rate rendah | Low | Root cause analysis |
         """)
+
+elif menu == "🔍 Filter Interaktif":
+    st.header("🔍 Filter Interaktif")
+    st.write("Filter data berdasarkan kriteria yang Anda pilih. Filter akan diterapkan pada semua visualisasi di bawah.")
+
+    # ===================== FUNGSI UNTUK LOAD & PREPARE ALL DATA =====================
+    @st.cache_data
+    def prepare_all_data():
+        """Menggabungkan semua dataset menjadi satu file dan simpan ke CSV"""
+        # Load ulang semua data
+        BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        folder = os.path.join(BASE_DIR, 'data') + '/'
+        customers      = pd.read_csv(folder + 'customers_dataset.csv')
+        orders         = pd.read_csv(folder + 'orders_dataset.csv')
+        items          = pd.read_csv(folder + 'order_items_dataset.csv')
+        payments       = pd.read_csv(folder + 'order_payments_dataset.csv')
+        reviews        = pd.read_csv(folder + 'order_reviews_dataset.csv')
+        products       = pd.read_csv(folder + 'products_dataset.csv')
+        sellers        = pd.read_csv(folder + 'sellers_dataset.csv')
+        category_trans = pd.read_csv(folder + 'product_category_name_translation.csv')
+
+        # Konversi datetime
+        date_cols = ['order_purchase_timestamp','order_approved_at','order_delivered_carrier_date',
+                     'order_delivered_customer_date','order_estimated_delivery_date']
+        for c in date_cols:
+            orders[c] = pd.to_datetime(orders[c], errors='coerce')
+
+        # Merge orders dengan customers
+        all_df = orders.merge(customers, on='customer_id', how='left')
+
+        # Merge dengan items
+        all_df = all_df.merge(items, on='order_id', how='left')
+
+        # Merge dengan payments
+        all_df = all_df.merge(payments, on='order_id', how='left')
+
+        # Merge dengan reviews
+        all_df = all_df.merge(reviews[['order_id', 'review_score']], on='order_id', how='left')
+
+        # Merge dengan products untuk dapat kategori
+        all_df = all_df.merge(products[['product_id', 'product_category_name']], on='product_id', how='left')
+
+        # Translate kategori produk
+        all_df = all_df.merge(category_trans, on='product_category_name', how='left')
+        all_df['product_category_name_english'] = all_df['product_category_name_english'].fillna('unknown')
+
+        # Standardisasi kota
+        all_df['customer_city'] = all_df['customer_city'].str.lower().str.strip()
+
+        # Ekstrak tahun-bulan
+        all_df['order_year'] = all_df['order_purchase_timestamp'].dt.year
+        all_df['order_month'] = all_df['order_purchase_timestamp'].dt.to_period('M')
+        all_df['order_month_str'] = all_df['order_month'].astype(str)
+
+        # Simpan ke CSV
+        all_df.to_csv("all_data.csv", index=False)
+        
+        return all_df
+
+    # Load data
+    all_df = prepare_all_data()
+
+    # ===================== SIDEBAR FILTERS =====================
+    st.sidebar.markdown("---")
+    st.sidebar.header("🧮 Filter Panel")
+
+    # 1. Filter Tanggal (Date Range)
+    st.sidebar.subheader("📅 Filter Tanggal")
+    min_date = all_df['order_purchase_timestamp'].min().date()
+    max_date = all_df['order_purchase_timestamp'].max().date()
+    
+    date_range = st.sidebar.date_input(
+        "Pilih Range Tanggal",
+        value=(min_date, max_date),
+        min_value=min_date,
+        max_value=max_date
+    )
+
+    # 2. Filter Kota (Multiselect)
+    st.sidebar.subheader("📍 Filter Kota")
+    all_cities = sorted(all_df['customer_city'].dropna().unique())
+    selected_cities = st.sidebar.multiselect(
+        "Pilih Kota",
+        options=all_cities,
+        default=[]
+    )
+
+    # 3. Filter Kategori Produk (Multiselect)
+    st.sidebar.subheader("📦 Filter Kategori Produk")
+    all_categories = sorted(all_df['product_category_name_english'].dropna().unique())
+    selected_categories = st.sidebar.multiselect(
+        "Pilih Kategori Produk",
+        options=all_categories,
+        default=[]
+    )
+
+    # 4. Filter Tahun/Bulan (Select Slider)
+    st.sidebar.subheader("📆 Filter Tahun/Bulan")
+    all_months = sorted(all_df['order_month_str'].dropna().unique())
+    selected_month_range = st.sidebar.select_slider(
+        "Pilih Periode Bulan",
+        options=all_months,
+        value=(all_months[0], all_months[-1])
+    )
+
+    # 5. Filter Range Nilai (Slider)
+    st.sidebar.subheader("💰 Filter Nilai Pesanan")
+    min_value = float(all_df['price'].min())
+    max_value = float(all_df['price'].max())
+    value_range = st.sidebar.slider(
+        "Range Harga (BRL)",
+        min_value=min_value,
+        max_value=max_value,
+        value=(min_value, max_value),
+        step=10.0
+    )
+
+    # 6. Filter Payment Type
+    st.sidebar.subheader("💳 Filter Metode Pembayaran")
+    all_payment_types = sorted(all_df['payment_type'].dropna().unique())
+    selected_payment_types = st.sidebar.multiselect(
+        "Pilih Metode Pembayaran",
+        options=all_payment_types,
+        default=[]
+    )
+
+    # 7. Filter Order Status
+    st.sidebar.subheader("📋 Filter Status Pesanan")
+    all_statuses = sorted(all_df['order_status'].dropna().unique())
+    selected_statuses = st.sidebar.multiselect(
+        "Pilih Status",
+        options=all_statuses,
+        default=[]
+    )
+
+    # ===================== APPLY FILTERS =====================
+    df_filtered = all_df.copy()
+
+    # Apply Date Range Filter
+    if len(date_range) == 2:
+        start_date, end_date = date_range
+        df_filtered = df_filtered[
+            (df_filtered['order_purchase_timestamp'].dt.date >= start_date) &
+            (df_filtered['order_purchase_timestamp'].dt.date <= end_date)
+        ]
+
+    # Apply City Filter
+    if selected_cities:
+        df_filtered = df_filtered[df_filtered['customer_city'].isin(selected_cities)]
+
+    # Apply Category Filter
+    if selected_categories:
+        df_filtered = df_filtered[df_filtered['product_category_name_english'].isin(selected_categories)]
+
+    # Apply Month Range Filter
+    if selected_month_range:
+        start_month, end_month = selected_month_range
+        df_filtered = df_filtered[
+            (df_filtered['order_month_str'] >= start_month) &
+            (df_filtered['order_month_str'] <= end_month)
+        ]
+
+    # Apply Price Range Filter
+    if value_range:
+        df_filtered = df_filtered[
+            (df_filtered['price'] >= value_range[0]) &
+            (df_filtered['price'] <= value_range[1])
+        ]
+
+    # Apply Payment Type Filter
+    if selected_payment_types:
+        df_filtered = df_filtered[df_filtered['payment_type'].isin(selected_payment_types)]
+
+    # Apply Status Filter
+    if selected_statuses:
+        df_filtered = df_filtered[df_filtered['order_status'].isin(selected_statuses)]
+
+    # ===================== TAMPILKAN HASIL FILTER =====================
+    st.markdown("---")
+    st.subheader(f"📊 Hasil Filter: {len(df_filtered):,} baris data")
+
+    # Metrics after filtering
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("Total Pesanan", f"{len(df_filtered):,}")
+    with col2:
+        st.metric("Total Revenue", f"BRL {df_filtered['price'].sum():,.0f}")
+    with col3:
+        st.metric("Rata-rata Review", f"{df_filtered['review_score'].mean():.2f}" if len(df_filtered) > 0 else "N/A")
+    with col4:
+        st.metric("Kota Unik", f"{df_filtered['customer_city'].nunique():,}")
+
+    # ===================== TABS UNTUK VISUALISASI =====================
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(["📋 Data Table", "📈 Tren Penjualan", "🏙️ Top Kota", "📦 Kategori Produk", "💳 Pembayaran"])
+
+    with tab1:
+        st.subheader("Data Tabel (Filter Dinamis)")
+        st.write("Tabel data yang telah difilter. Gunakan kolom pencarian untuk mencari data spesifik.")
+        
+        # Pilih kolom yang ingin ditampilkan
+        display_columns = st.multiselect(
+            "Pilih Kolom yang Ingin Ditampilkan",
+            options=df_filtered.columns.tolist(),
+            default=['order_id', 'customer_city', 'product_category_name_english', 'price', 'payment_type', 'order_status', 'review_score']
+        )
+        
+        if len(df_filtered) > 0:
+            st.dataframe(
+                df_filtered[display_columns].head(1000),
+                use_container_width=True,
+                height=400
+            )
+            
+            # Download filtered data
+            csv = df_filtered.to_csv(index=False)
+            st.download_button(
+                label="📥 Download Data Filtered (CSV)",
+                data=csv,
+                file_name="filtered_data.csv",
+                mime="text/csv"
+            )
+        else:
+            st.warning("Tidak ada data yang sesuai dengan filter yang dipilih.")
+
+    with tab2:
+        st.subheader("📈 Tren Penjualan")
+        if len(df_filtered) > 0:
+            # Monthly trend
+            monthly_data = df_filtered.groupby('order_month_str').agg(
+                total_orders=('order_id', 'count'),
+                total_revenue=('price', 'sum'),
+                avg_review=('review_score', 'mean')
+            ).reset_index()
+
+            fig, axes = plt.subplots(2, 1, figsize=(12, 8))
+            
+            # Orders trend
+            axes[0].plot(monthly_data['order_month_str'], monthly_data['total_orders'], 
+                        marker='o', color='#FF6B6B', linewidth=2)
+            axes[0].set_title('Tren Jumlah Pesanan per Bulan')
+            axes[0].set_xlabel('Bulan')
+            axes[0].set_ylabel('Jumlah Pesanan')
+            axes[0].tick_params(axis='x', rotation=45)
+            
+            # Revenue trend
+            axes[1].plot(monthly_data['order_month_str'], monthly_data['total_revenue'], 
+                        marker='s', color='#4ECDC4', linewidth=2)
+            axes[1].set_title('Tren Revenue per Bulan')
+            axes[1].set_xlabel('Bulan')
+            axes[1].set_ylabel('Revenue (BRL)')
+            axes[1].tick_params(axis='x', rotation=45)
+            
+            plt.tight_layout()
+            st.pyplot(fig)
+        else:
+            st.warning("Tidak ada data untuk visualisasi.")
+
+    with tab3:
+        st.subheader("🏙️ Top Kota")
+        if len(df_filtered) > 0:
+            city_data = df_filtered.groupby('customer_city').agg(
+                total_orders=('order_id', 'count'),
+                total_revenue=('price', 'sum')
+            ).reset_index().sort_values('total_orders', ascending=False).head(15)
+
+            fig, ax = plt.subplots(figsize=(10, 6))
+            bars = ax.barh(city_data['customer_city'], city_data['total_orders'], color='salmon')
+            ax.set_xlabel('Jumlah Pesanan')
+            ax.invert_yaxis()
+            for bar in bars:
+                width = bar.get_width()
+                ax.text(width, bar.get_y() + bar.get_height()/2, f'{int(width):,}', va='center', ha='left')
+            st.pyplot(fig)
+        else:
+            st.warning("Tidak ada data untuk visualisasi.")
+
+    with tab4:
+        st.subheader("📦 Kategori Produk")
+        if len(df_filtered) > 0:
+            category_data = df_filtered.groupby('product_category_name_english').agg(
+                total_items=('order_item_id', 'count'),
+                total_revenue=('price', 'sum')
+            ).reset_index().sort_values('total_items', ascending=False).head(15)
+
+            fig, ax = plt.subplots(figsize=(10, 6))
+            bars = ax.barh(category_data['product_category_name_english'], category_data['total_items'], color='skyblue')
+            ax.set_xlabel('Jumlah Item Terjual')
+            ax.invert_yaxis()
+            st.pyplot(fig)
+        else:
+            st.warning("Tidak ada data untuk visualisasi.")
+
+    with tab5:
+        st.subheader("💳 Metode Pembayaran")
+        if len(df_filtered) > 0:
+            payment_data = df_filtered.groupby('payment_type').agg(
+                total_transactions=('order_id', 'count'),
+                total_amount=('payment_value', 'sum')
+            ).reset_index().sort_values('total_transactions', ascending=False)
+
+            fig, ax = plt.subplots(figsize=(10, 6))
+            bars = ax.barh(payment_data['payment_type'], payment_data['total_transactions'], color='lightgreen')
+            ax.set_xlabel('Jumlah Transaksi')
+            ax.invert_yaxis()
+            st.pyplot(fig)
+        else:
+            st.warning("Tidak ada data untuk visualisasi.")
+
+    st.markdown("---")
+    st.info("💡 Catatan: Data yang difilter dapat di-download sebagai CSV untuk analisis lebih lanjut.")
 
 # Footer
 st.markdown("---")
