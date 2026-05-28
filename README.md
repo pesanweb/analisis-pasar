@@ -2,6 +2,65 @@
 
 Dashboard interaktif untuk menganalisis data penjualan e-commerce menggunakan Python, Pandas, dan Streamlit.
 
+## 🛠️ Persiapan Environment
+
+### 1. Clone Repository
+```bash
+git clone https://github.com/<username>/<repo-name>.git
+cd analis-pasar
+```
+
+### 2. Buat Virtual Environment (Disarankan)
+```bash
+# Windows
+python -m venv venv
+venv\Scripts\activate
+
+# Linux/Mac
+python -m venv venv
+source venv/bin/activate
+```
+
+### 3. Install Dependencies
+```bash
+pip install -r requirements.txt
+```
+
+Jika belum ada requirements.txt, install manual:
+```bash
+pip install pandas numpy matplotlib seaborn streamlit scipy
+```
+
+## 🚀 Cara Menjalankan
+
+### Local Deployment
+```bash
+# Jalankan dashboard Streamlit
+streamlit run dashboard/dashboard.py
+```
+
+Buka browser ke `http://localhost:8501`
+
+### Streamlit Cloud Deployment
+
+1. **Push ke GitHub**
+   ```bash
+   git init
+   git add .
+   git commit -m "Initial commit"
+   git branch -M main
+   git remote add origin https://github.com/<username>/<repo-name>.git
+   git push -u origin main
+   ```
+
+2. **Deploy ke Streamlit Cloud**
+   - Buka [Streamlit Cloud](https://share.streamlit.io)
+   - Login dengan GitHub
+   - Klik "New App"
+   - Select repository dan branch (main)
+   - Main file path: `dashboard/dashboard.py`
+   - Klik "Deploy"
+
 ## 📊 Fitur Analisis
 
 ### Analisis Dasar
@@ -71,7 +130,7 @@ Buka browser ke `http://localhost:8501`
 
 ```
 analis-pasar/
-├── E-Commerce Public Dataset/
+├── data/
 │   ├── customers_dataset.csv
 │   ├── orders_dataset.csv
 │   ├── order_items_dataset.csv
@@ -79,12 +138,13 @@ analis-pasar/
 │   ├── order_reviews_dataset.csv
 │   ├── products_dataset.csv
 │   ├── sellers_dataset.csv
-│   ├── geolocation_dataset.csv
+│   ├── geolocation_trimmed.csv
 │   └── product_category_name_translation.csv
-├── analisis_ecommerce.ipynb    # Notebook analisis lengkap
-├── dashboard.py                 # Streamlit dashboard interaktif
+├── dashboard/
+│   └── dashboard.py             # Streamlit dashboard interaktif
+├── Proyek_Analisis_Data.ipynb   # Notebook analisis lengkap
 ├── requirements.txt             # Dependencies
-└── README.md                   # File ini
+└── README.md                    # File ini
 ```
 
 ## 🎯 Insight Utama

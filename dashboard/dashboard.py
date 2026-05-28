@@ -58,7 +58,7 @@ customers, orders, items, payments, reviews, products, geolocation, category_tra
 st.sidebar.header("Navigasi")
 menu = st.sidebar.radio(
     "Pilih Halaman:",
-    ["🏠 Home", "📦 Produk Laris", "📍 Kota Sumber Cuan", "📅 Tren Penjualan", "🚚 Pengiriman & Review", "👥 RFM Analysis", "🗺️ Geospatial", "🎯 Clustering"]
+    ["🏠 Home", "📦 Produk Laris", "📍 Kota Sumber Cuan", "📅 Tren Penjualan", "🚚 Pengiriman & Review", "👥 RFM Analysis", "🗺️ Geospatial", "🎯 Clustering", "💳 Pembayaran Online vs Offline", "📆 Konversi Hari Libur"]
 )
 
 # Helper metrics
@@ -529,6 +529,199 @@ elif menu == "🎯 Clustering":
 
     st.markdown("---")
     st.info("💡 Insight: Kombinasi 'One-time Buyer' + 'High Spender' adalah candidate buat email nurture. Kalau sudah frequent & high value, masuk VIP program!")
+
+elif menu == "💳 Pembayaran Online vs Offline":
+    st.header("💳 Kepuasan Pelanggan: Online vs Offline")
+    st.write("Analisis apakah metode pembayaran (online/offline) memengaruhi kepuasan pelanggan.")
+
+    from scipy import stats
+
+    # Prepare data
+    payments_orders = payments.merge(orders[['order_id', 'order_purchase_timestamp', 'order_status']], on='order_id', how='inner')
+    payments_orders = payments_orders[payments_orders['order_status'] == 'delivered']
+    payments_orders_reviews = payments_orders.merge(reviews[['order_id', 'review_score']], on='order_id', how='inner')
+
+    online_types = ['credit_card', 'debit_card']
+    offline_types = ['boleto', 'voucher']
+    payments_orders_reviews['payment_category'] = payments_orders_reviews['payment_type'].apply(
+        lambda x: 'online' if x in online_types else ('offline' if x in offline_types else 'other')
+    )
+    df_analysis = payments_orders_reviews[payments_orders_reviews['payment_category'].isin(['online', 'offline'])].copy()
+
+    online_scores = df_analysis[df_analysis['payment_category'] == 'online']['review_score']
+    offline_scores = df_analysis[df_analysis['payment_category'] == 'offline']['review_score']
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.metric("Jumlah Transaksi Online", f"{len(online_scores):,}")
+        st.metric("Rata-rata Review Score (Online)", f"{online_scores.mean():.4f}")
+    with col2:
+        st.metric("Jumlah Transaksi Offline", f"{len(offline_scores):,}")
+        st.metric("Rata-rata Review Score (Offline)", f"{offline_scores.mean():.4f}")
+
+    t_stat, p_value = stats.ttest_ind(online_scores, offline_scores)
+
+    st.subheader("Hasil Uji Statistik (Independent t-test)")
+    col3, col4, col5 = st.columns(3)
+    col3.metric("t-statistic", f"{t_stat:.4f}")
+    col4.metric("p-value", f"{p_value:.6f}")
+    col5.metric("Threshold (α)", "0.01")
+
+    if p_value <= 0.01:
+        st.success("✅ SIGNIFIKAN: Terdapat perbedaan signifikan antara kepuasan online vs offline")
+    else:
+        st.warning("⚠️ TIDAK SIGNIFIKAN: Tidak ada perbedaan signifikan antara kepuasan online vs offline")
+
+    tab1, tab2 = st.tabs(["Visualisasi", "Kesimpulan & Rekomendasi"])
+
+    with tab1:
+        fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+        df_analysis.boxplot(column='review_score', by='payment_category', ax=axes[0])
+        axes[0].set_title('Distribusi Review Score\n(Online vs Offline)')
+        axes[0].set_xlabel('Kategori Pembayaran')
+        axes[0].set_ylabel('Review Score')
+        plt.suptitle('')
+
+        means = [online_scores.mean(), offline_scores.mean()]
+        stds = [online_scores.std(), offline_scores.std()]
+        labels = ['Online', 'Offline']
+        x = np.arange(len(labels))
+        axes[1].bar(x, means, yerr=stds, capsize=5, color=['coral', 'steelblue'], alpha=0.7, edgecolor='black')
+        axes[1].set_xticks(x)
+        axes[1].set_xticklabels(labels)
+        axes[1].set_title('Rata-rata Review Score dengan Standar Deviasi')
+        axes[1].set_ylabel('Review Score')
+        for i, (v, s) in enumerate(zip(means, stds)):
+            axes[1].text(i, v + s + 0.1, f'{v:.4f}', ha='center', fontsize=10)
+
+        plt.tight_layout()
+        st.pyplot(fig)
+
+    with tab2:
+        st.subheader("Kesimpulan")
+        st.markdown("""
+        - Metode pembayaran (online/offline) **tidak memengaruhi** tingkat kepuasan pelanggan secara statistik signifikan
+        - p-value ({:.4f}) > 0.01, berarti kita gagal menolak hipotesis nol
+        """.format(p_value))
+
+        st.subheader("Rekomendasi")
+        st.markdown("""
+        | No | Aksi | Priority |
+        |----|------|----------|
+        | 1 | Fokus pada kecepatan delivery sebagai faktor kepuasan utama | High |
+        | 2 | Tingkatkan kualitas packaging untuk semua metode pembayaran | Medium |
+        | 3 | Buat customer service yang responsif untuk semua channel | Medium |
+        | 4 | Monitor review score per kategori produk | Low |
+        """)
+
+elif menu == "📆 Konversi Hari Libur":
+    st.header("📆 Konversi Transaksional: Hari Libur vs Hari Kerja")
+    st.write("Analisis apakah konversi transaksional berbeda antara periode hari libur nasional Brazil dan hari kerja normal.")
+
+    from datetime import date
+    from scipy import stats
+
+    orders_analysis = orders.copy()
+    orders_analysis['order_date'] = orders_analysis['order_purchase_timestamp'].dt.date
+
+    holidays_2016_2018 = [
+        date(2016, 1, 1), date(2016, 2, 8), date(2016, 2, 9), date(2016, 2, 10),
+        date(2016, 4, 21), date(2016, 5, 1), date(2016, 9, 7), date(2016, 10, 12),
+        date(2016, 11, 15), date(2016, 11, 25), date(2016, 12, 25),
+        date(2017, 1, 1), date(2017, 2, 27), date(2017, 2, 28), date(2017, 3, 1),
+        date(2017, 4, 14), date(2017, 4, 21), date(2017, 5, 1), date(2017, 9, 7),
+        date(2017, 10, 12), date(2017, 11, 15), date(2017, 11, 24), date(2017, 12, 25),
+        date(2018, 1, 1), date(2018, 2, 12), date(2018, 2, 13), date(2018, 2, 14),
+        date(2018, 3, 30), date(2018, 4, 21), date(2018, 5, 1), date(2018, 9, 7),
+        date(2018, 10, 12), date(2018, 11, 15), date(2018, 11, 23), date(2018, 12, 25),
+    ]
+
+    orders_analysis['is_holiday'] = orders_analysis['order_date'].apply(
+        lambda x: 'holiday' if x in holidays_2016_2018 else 'normal'
+    )
+
+    daily_stats = orders_analysis.groupby('order_date').agg(
+        total_orders=('order_id', 'count'),
+        delivered_orders=('order_status', lambda x: (x == 'delivered').sum())
+    ).reset_index()
+    daily_stats['is_holiday'] = daily_stats['order_date'].apply(
+        lambda x: 'holiday' if x in holidays_2016_2018 else 'normal'
+    )
+    daily_stats['conversion_rate'] = daily_stats['delivered_orders'] / daily_stats['total_orders']
+
+    holiday_conv = daily_stats[daily_stats['is_holiday'] == 'holiday']['conversion_rate']
+    normal_conv = daily_stats[daily_stats['is_holiday'] == 'normal']['conversion_rate']
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.metric("Jumlah Hari Libur", f"{len(holiday_conv)}")
+        st.metric("Mean Conversion Rate (Libur)", f"{holiday_conv.mean():.4f}")
+    with col2:
+        st.metric("Jumlah Hari Normal", f"{len(normal_conv)}")
+        st.metric("Mean Conversion Rate (Normal)", f"{normal_conv.mean():.4f}")
+
+    t_stat, p_value = stats.ttest_ind(holiday_conv, normal_conv)
+
+    st.subheader("Hasil Uji Statistik (Independent t-test)")
+    col3, col4, col5 = st.columns(3)
+    col3.metric("t-statistic", f"{t_stat:.4f}")
+    col4.metric("p-value", f"{p_value:.6f}")
+    col5.metric("Threshold (α)", "0.025")
+
+    if p_value <= 0.025:
+        st.success("✅ SIGNIFIKAN: Terdapat perbedaan signifikan konversi hari libur vs hari normal")
+    else:
+        st.warning("⚠️ TIDAK SIGNIFIKAN: Tidak ada perbedaan signifikan konversi hari libur vs hari normal")
+
+    tab1, tab2 = st.tabs(["Visualisasi", "Kesimpulan & Rekomendasi"])
+
+    with tab1:
+        fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+
+        data_boxplot = [holiday_conv, normal_conv]
+        labels = ['Hari Libur', 'Hari Normal']
+        bp = axes[0].boxplot(data_boxplot, labels=labels, patch_artist=True)
+        bp['boxes'][0].set_facecolor('coral')
+        bp['boxes'][1].set_facecolor('steelblue')
+        axes[0].set_title('Distribusi Conversion Rate\n(Hari Libur vs Hari Normal)')
+        axes[0].set_ylabel('Conversion Rate')
+        axes[0].axhline(y=holiday_conv.mean(), color='r', linestyle='--', alpha=0.5, label=f'Mean Libur: {holiday_conv.mean():.3f}')
+        axes[0].axhline(y=normal_conv.mean(), color='g', linestyle='--', alpha=0.5, label=f'Mean Normal: {normal_conv.mean():.3f}')
+        axes[0].legend(loc='lower right')
+
+        means = [holiday_conv.mean(), normal_conv.mean()]
+        stds = [holiday_conv.std(), normal_conv.std()]
+        x = np.arange(len(labels))
+        bars = axes[1].bar(x, means, yerr=stds, capsize=8, color=['coral', 'steelblue'], alpha=0.7, edgecolor='black')
+        axes[1].set_xticks(x)
+        axes[1].set_xticklabels(labels)
+        axes[1].set_title('Rata-rata Conversion Rate dengan Standar Deviasi')
+        axes[1].set_ylabel('Conversion Rate')
+        axes[1].set_ylim(0, max(means) * 1.5)
+        for i, (v, s) in enumerate(zip(means, stds)):
+            axes[1].text(i, v + s + 0.02, f'{v:.4f}\n(±{s:.3f})', ha='center', fontsize=10)
+
+        plt.tight_layout()
+        st.pyplot(fig)
+
+    with tab2:
+        st.subheader("Kesimpulan")
+        st.markdown("""
+        - Tidak ada perbedaan signifikan antara konversi transaksional hari libur vs hari kerja normal
+        - p-value ({:.4f}) > 0.025, berarti kita gagal menolak hipotesis nol
+        - Conversion rate holiday lebih tinggi (0.96) tapi tidak signifikan secara statistik
+        - Variance hari normal lebih tinggi (std: {:.4f}) menunjukkan ketidakstabilan proses
+        """.format(p_value, normal_conv.std()))
+
+        st.subheader("Rekomendasi")
+        st.markdown("""
+        | No | Aksi | Priority | Target |
+        |----|------|----------|--------|
+        | 1 | Stabilkan proses delivery hari normal | High | Kurangi variabilitas (std tinggi) |
+        | 2 | Jaga kapasitas warehouse menjelang holiday | Medium | Stock adequacy |
+        | 3 | Sediakan customer support extra saat holiday | Medium | Coverage 24/7 |
+        | 4 | Analisis faktor yang menyebabkan conversion rate rendah | Low | Root cause analysis |
+        """)
 
 # Footer
 st.markdown("---")
